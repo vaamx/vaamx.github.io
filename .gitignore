@@ -1,0 +1,7 @@
+# Transient LaTeX artifacts (CV is built one level up; only the .pdf belongs here)
+*.aux
+*.log
+*.out
+*.toc
+texput.log
+.DS_Store
