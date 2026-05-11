@@ -1,0 +1,256 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Verifiable AI Agents for On-Chain Fund Management — Victor Amaya</title>
+<meta name="description" content="A 36-hour build at ETHGlobal Cannes: an autonomous treasury agent that proves its inference before signing trades." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../style.css" />
+<link rel="stylesheet" href="article.css" />
+</head>
+<body class="article-page">
+
+<header class="nav">
+  <div class="nav-shell">
+    <a class="logo" href="../index.html#home">
+      <span class="logo-light">Victor</span><span class="logo-bold">Amaya</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html#home">Home</a>
+      <a href="../index.html#portfolio">Portfolio</a>
+      <a href="../index.html#articles" class="is-active">Articles</a>
+      <a href="../index.html#about">About Me</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<section class="art-hero">
+  <span class="art-kicker">
+    <span class="cat">Hackathon · ETHGlobal Cannes</span>
+    <span class="dot">·</span>
+    <span>April 2026</span>
+    <span class="dot">·</span>
+    <span>6 min read</span>
+  </span>
+  <h1 class="art-title">Verifiable AI Agents for On-Chain Fund Management</h1>
+  <p class="art-deck">
+    A 36-hour build. The pitch: an autonomous treasury agent that signs trades
+    only when it can <em>prove</em> the inference that produced the decision.
+    Settled on Starknet, verified on-chain, end to end.
+  </p>
+  <div class="art-byline">
+    <div class="art-byline-avatar"><img src="../assets/profile.png" alt="Victor Amaya" /></div>
+    <div><strong>Victor Amaya</strong> · Founding Engineer, BitSage Network</div>
+  </div>
+</section>
+
+<div class="art-cover">
+  <div class="art-cover-frame">
+    <img src="../assets/articles/ethglobal-cannes.jpg" alt="ETHGlobal Cannes" />
+  </div>
+</div>
+
+<article class="art-body">
+
+  <p>
+    "Can we trust the LLM with the keys?" is one of the dumber questions in
+    crypto right now. The interesting question is what would have to be true
+    for the answer to be <em>yes</em>. We spent a weekend at ETHGlobal Cannes
+    building one possible answer.
+  </p>
+
+  <h2>The premise</h2>
+
+  <p>
+    A DAO treasury sits in a smart-contract vault. The treasury would like to
+    delegate small rebalancing decisions to an AI agent — say, between USDC,
+    ETH, and a staking position. The agent reads market data, runs an LLM
+    forecast, and proposes a trade. The smart contract decides whether to
+    execute.
+  </p>
+
+  <p>
+    The problem: the smart contract has no way to know whether the agent
+    actually ran the LLM, what model, on what inputs. The agent could be
+    making up the forecast. The agent could be running a different model than
+    it claims. The agent could be running the right model on different inputs.
+    Reputation systems only tell you that someone vouched for the agent, not
+    that the inference is correct.
+  </p>
+
+  <p>
+    What you want is a cryptographic receipt. The agent doesn't just say
+    "the model recommends 60/30/10." The agent says "the model recommends
+    60/30/10, and here is a proof that <em>this specific model</em> on
+    <em>this specific input</em> produced exactly that output."
+  </p>
+
+  <h2>The 36-hour build</h2>
+
+  <p>
+    We built three components, in this order, with one engineer on each:
+  </p>
+
+  <h3>1. The treasury vault contract (Cairo)</h3>
+
+  <p>
+    A Starknet smart contract that holds the treasury, accepts trade proposals,
+    and executes them only if a valid Obelyzk proof is attached. The contract
+    is parameterized by a Merkle root of the agent's model weights — the
+    contract is pinned to a specific model.
+  </p>
+
+  <p>
+    The verifier itself is the recursive STARK verifier from Obelyzk, deployed
+    as a class hash and called from the vault. The vault checks: (a) the proof
+    verifies, (b) the model root matches the one the vault was instantiated
+    with, (c) the input to the model matches the market data the agent
+    claimed to be reacting to, (d) the output matches the proposed trade.
+  </p>
+
+  <h3>2. The agent (Python + LangChain)</h3>
+
+  <p>
+    A LangChain agent with three tools: <code>get_market_data</code>,
+    <code>run_model</code>, and <code>propose_trade</code>. The model in
+    question is a fine-tuned SmolLM2-135M — small enough that we could
+    actually prove a forward pass inside the hackathon's time budget, large
+    enough to produce believable trading recommendations.
+  </p>
+
+  <p>
+    The agent loop is mundane: pull market data, format a prompt, run the
+    model, parse the output as a JSON object, format the trade payload. The
+    interesting bit is the <code>run_model</code> tool — it doesn't just
+    return the model output, it returns a tuple of (output, proof) by calling
+    into Obelyzk under the hood.
+  </p>
+
+  <h3>3. The proof transport (TypeScript)</h3>
+
+  <p>
+    The middleware that takes the (input, output, proof) tuple from the agent
+    and submits it to the vault contract on Starknet. About 200 lines of
+    TypeScript using <code>starknet.js</code>, plus a small queue for
+    handling fee estimation and retries when Sepolia is congested.
+  </p>
+
+  <h2>What it actually proves</h2>
+
+  <p>
+    Three things are cryptographically guaranteed by the time a trade
+    settles:
+  </p>
+
+  <ul>
+    <li>The exact model that ran (committed at vault deploy).</li>
+    <li>The exact input the model saw (committed in the proof's public inputs).</li>
+    <li>The exact output the model produced (committed in the proof's public outputs).</li>
+  </ul>
+
+  <p>
+    What is <em>not</em> guaranteed:
+  </p>
+
+  <ul>
+    <li><strong>The input was the truth.</strong> If the agent claims market data was X but it was actually Y, the proof is still valid — it just proves the model ran on X. You need an oracle layer for the truth of the input.</li>
+    <li><strong>The trade is profitable.</strong> The proof says nothing about whether the model is any good. It just says the model said what it said.</li>
+    <li><strong>The model is honest.</strong> If the model itself is adversarial, the proof faithfully attests to its dishonest output. The proof is about computation, not about values.</li>
+  </ul>
+
+  <div class="art-callout">
+    <strong>What this <em>does</em> rule out.</strong> An operator who runs a
+    different model than promised. An operator who runs the model on
+    different input than promised. An operator who simply lies about what
+    the model said. Those are most of the trust failures in delegated AI
+    systems today.
+  </div>
+
+  <h2>Limitations we hit</h2>
+
+  <p>
+    Three real ones.
+  </p>
+
+  <p>
+    <strong>Proving time vs. trading time.</strong> SmolLM2-135M proves a
+    forward pass in roughly 90 seconds on a single H100. That's fine for
+    treasury rebalancing on a weekly cadence. It's not fine for HFT. We need
+    another 10× to be in the conversation for tighter loops.
+  </p>
+
+  <p>
+    <strong>Fee budgets.</strong> Each verification costs roughly 0.001 STRK
+    on Sepolia. On mainnet that becomes meaningful for small trades. We
+    sketched a "fee envelope" pattern where the vault only verifies if the
+    trade size exceeds the verification cost by some configurable multiple.
+  </p>
+
+  <p>
+    <strong>Model swaps.</strong> The vault is pinned to a single model root.
+    Upgrading the model means re-deploying the vault, or threading a
+    governance mechanism through. Not a hard problem, but a real one.
+  </p>
+
+  <h2>What it's good for</h2>
+
+  <p>
+    This is not the architecture for high-frequency trading. It's the
+    architecture for the long tail of "I want to delegate medium-stakes
+    financial decisions to an AI agent and have a real receipt." Treasury
+    rebalancing. Predictions markets. DAO governance with AI-assisted
+    proposals. Any system where the cost of a wrong delegation is high
+    enough to justify a verification step.
+  </p>
+
+  <blockquote>
+    The point isn't that we trust the AI. The point is that we don't have
+    to — the smart contract checks.
+  </blockquote>
+
+  <p>
+    Demo deck, vault address, and a Sepolia transaction trail are linked
+    from the Obelyzk repo. Reach out if you want to deploy a treasury vault
+    of your own — we'd love to see what it does in the wild.
+  </p>
+
+</article>
+
+<div class="art-footer">
+  <ul class="art-tags">
+    <li>ZK</li><li>AI Agents</li><li>Starknet</li><li>Treasury</li><li>Hackathon</li>
+  </ul>
+  <div class="art-share">
+    <span class="art-share-label">Share or cite</span>
+    <span><strong>Victor Amaya.</strong> "Verifiable AI Agents for On-Chain Fund Management." ETHGlobal Cannes, April 2026.</span>
+  </div>
+  <a class="art-prev" href="../index.html#articles">← Back to articles</a>
+</div>
+
+<section class="art-related">
+  <span class="art-related-label">Continue reading</span>
+  <div class="art-related-grid">
+    <a class="art-related-card" href="verifying-14b-on-chain.html">
+      <div class="thumb"><img src="../assets/articles/kraken-stwo.jpg" alt="" /></div>
+      <span class="meta">Field notes · April 2026</span>
+      <h4>Verifying a 14-Billion Parameter Neural Network On-Chain</h4>
+    </a>
+    <a class="art-related-card" href="gkr-sumcheck-practitioner-guide.html">
+      <div class="thumb"><img src="../assets/articles/zksummit-rome.jpg" alt="" /></div>
+      <span class="meta">Talk · zkSummit 14 · May 2026</span>
+      <h4>A Practitioner's Guide to GKR Sumcheck Over Circle STARKs</h4>
+    </a>
+    <a class="art-related-card" href="cuda-kernels-m31.html">
+      <div class="thumb"><img src="../assets/articles/cuda-kernels.jpg" alt="" /></div>
+      <span class="meta">Engineering · March 2026</span>
+      <h4>Custom CUDA Kernels for Proving over M31</h4>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>

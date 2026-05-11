@@ -1,0 +1,290 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>A Practitioner's Guide to GKR Sumcheck Over Circle STARKs — Victor Amaya</title>
+<meta name="description" content="Notes from zkSummit 14: the engineering side of building a GKR sumcheck prover on top of StarkWare's STWO." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../style.css" />
+<link rel="stylesheet" href="article.css" />
+</head>
+<body class="article-page">
+
+<header class="nav">
+  <div class="nav-shell">
+    <a class="logo" href="../index.html#home" aria-label="Victor Amaya">
+      <span class="logo-light">Victor</span><span class="logo-bold">Amaya</span>
+    </a>
+    <nav class="nav-links" aria-label="Primary">
+      <a href="../index.html#home">Home</a>
+      <a href="../index.html#portfolio">Portfolio</a>
+      <a href="../index.html#articles" class="is-active">Articles</a>
+      <a href="../index.html#about">About Me</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<section class="art-hero">
+  <span class="art-kicker">
+    <span class="cat">Talk · zkSummit 14, Rome</span>
+    <span class="dot">·</span>
+    <span>May 2026</span>
+    <span class="dot">·</span>
+    <span>12 min read</span>
+  </span>
+  <h1 class="art-title">A Practitioner's Guide to GKR Sumcheck Over Circle STARKs</h1>
+  <p class="art-deck">
+    Most explanations of GKR stop at the algebra. These are the notes I gave at
+    zkSummit 14 — the engineering side: how to wire it onto StarkWare's STWO,
+    why the M31 field is a quiet GPU superpower, and the specific tricks that
+    cut prover time by an order of magnitude.
+  </p>
+  <div class="art-byline">
+    <div class="art-byline-avatar"><img src="../assets/profile.png" alt="Victor Amaya" /></div>
+    <div>
+      <strong>Victor Amaya</strong> · Founding Engineer, BitSage Network
+    </div>
+  </div>
+</section>
+
+<div class="art-cover">
+  <div class="art-cover-frame">
+    <img src="../assets/articles/zksummit-rome.jpg" alt="zkSummit 14 Rome cover" />
+  </div>
+</div>
+
+<article class="art-body">
+
+  <p>
+    A year ago, proving that a neural network of any interesting size had
+    produced a given output on-chain was an academic exercise. Today it's a
+    transaction. This is a tour of how we got there, told from inside the
+    proving system, not from the cryptography-paper side.
+  </p>
+
+  <p>
+    The plan: explain why <strong>GKR sumcheck</strong> beats naive STARK
+    arithmetization for matrix-heavy workloads, why <strong>Circle STARKs over
+    M31</strong> are a quiet revolution for the GPU, and what it costs in
+    engineering effort once you commit to that path.
+  </p>
+
+  <h2>Why GKR, not "just" STARKs</h2>
+
+  <p>
+    A transformer forward pass is roughly 90% matrix-matrix multiplications.
+    Encoding a matmul as a STARK execution trace gives you a table with one row
+    per scalar multiplication. For a 4096×4096 × 4096×4096 matmul that's 68
+    billion rows. Even with the best polynomial commitment scheme on the
+    market, you're not committing to 68 billion rows.
+  </p>
+  <p>
+    GKR sumcheck (Goldwasser–Kalai–Rothblum, 2008) reformulates the same
+    statement: instead of tracing every multiplication, you fold the matmul
+    into a multilinear polynomial identity and prove that identity via a series
+    of <code>log₂(n)</code> sumcheck rounds. Verifier cost goes from
+    <code>O(n³)</code> to <code>O(n · log n)</code>. Prover cost stays roughly
+    <code>O(n³)</code> in raw work, but the work is dense, regular, and lives
+    on a GPU beautifully.
+  </p>
+
+  <div class="art-callout">
+    <strong>The trade.</strong> GKR makes the prover do regular linear-algebra
+    work on dense vectors instead of irregular polynomial commitments over
+    sparse traces. The verifier sees a polynomial-sized proof and runs a few
+    rounds of evaluation. For ML inference, this trade is overwhelmingly
+    favourable.
+  </div>
+
+  <h2>What STWO gives us</h2>
+
+  <p>
+    STWO is StarkWare's next-generation Circle STARK prover. Three things
+    matter for our story:
+  </p>
+
+  <ul>
+    <li><strong>Mersenne-31 (M31).</strong> The native field is <code>p = 2³¹ − 1</code>. Field multiplications fit in 64-bit integer registers with no Montgomery dance.</li>
+    <li><strong>Circle group.</strong> Roots of unity live on the unit circle <em>x² + y² = 1</em> over the M31 extension. Polynomial evaluation domains are tiny and friendly to FFTs.</li>
+    <li><strong>Transparent setup.</strong> No trusted ceremony. FRI for the polynomial commitment scheme. Pure cryptographic assumptions.</li>
+  </ul>
+
+  <p>
+    M31 is the unsung hero. On a modern NVIDIA H100, an M31 multiplication is
+    roughly <code>(a * b) % p</code> on 64-bit integers, then a single
+    fused-multiply-subtract to reduce. We measured 14× throughput against the
+    same kernel running on BN254. For a 14-billion-parameter Qwen forward pass,
+    that is the difference between a proof you can run on a single H100 and
+    one that needs a multi-GPU cluster.
+  </p>
+
+  <h2>The sumcheck round, plainly</h2>
+
+  <p>
+    Given a multilinear polynomial <code>P(x₁, x₂, …, xₙ)</code> over the
+    boolean hypercube, the prover wants to convince the verifier that
+    <code>∑ P(x) = H</code> for some claimed value H. The protocol runs
+    <code>n</code> rounds. In round <em>i</em>:
+  </p>
+
+  <ol>
+    <li>The prover sends a univariate polynomial <code>gᵢ(Xᵢ)</code> that is supposed to be the sum of <code>P</code> with all earlier variables fixed and all later variables summed.</li>
+    <li>The verifier checks that <code>gᵢ(0) + gᵢ(1) = </code> the value the previous round predicted.</li>
+    <li>The verifier picks a random <code>rᵢ</code> and the protocol recurses on the smaller polynomial.</li>
+  </ol>
+
+  <p>
+    At the end of <code>n</code> rounds, the verifier needs to evaluate
+    <code>P(r₁, r₂, …, rₙ)</code> at a single point. For a transformer matmul,
+    the polynomial <code>P</code> is the dot product of two MLEs (multilinear
+    extensions) — one for the weight matrix, one for the activation vector.
+    Evaluating it at a random point is one polynomial commitment opening per
+    operand, which is exactly what STWO is great at.
+  </p>
+
+  <h2>What we actually built</h2>
+
+  <p>
+    Obelyzk's prover is roughly three layers:
+  </p>
+
+  <pre><code>┌──────────────────────────────────────────┐
+│  ML layer (Python, glue, model loading)  │
+├──────────────────────────────────────────┤
+│  GKR circuits (Rust)                     │
+│    matmul · attention · LayerNorm · SiLU │
+├──────────────────────────────────────────┤
+│  STWO + custom CUDA (Rust + .cu kernels) │
+│    MLE eval · sumcheck rounds · Poseidon │
+└──────────────────────────────────────────┘</code></pre>
+
+  <p>
+    The Python layer takes a model and a tokenized input, breaks the forward
+    pass into proof segments, and dispatches each segment to the Rust GKR
+    layer. The GKR layer materializes the MLEs, runs the sumcheck protocol,
+    and calls down to the CUDA kernels for the heavy lifting.
+  </p>
+
+  <h3>Three kernels that matter</h3>
+
+  <p>
+    <strong>MLE restriction.</strong> Once the verifier picks a random
+    challenge <code>r</code>, the prover has to "restrict" the multilinear
+    polynomial at that point. This is a fold across the hypercube. The kernel
+    is straightforward map-reduce, but it dominates memory bandwidth. We pin
+    the polynomial in HBM, write the result in-place, and reach 92% of
+    theoretical bandwidth on H100.
+  </p>
+
+  <p>
+    <strong>Sumcheck round.</strong> Each round computes <code>gᵢ(0)</code>,
+    <code>gᵢ(1)</code>, and the leading coefficient. With M31, this is three
+    parallel reductions over half the polynomial. Naively, three kernel
+    launches. We fuse them into a single launch with warp-level shuffles,
+    cutting launch overhead by ~3×.
+  </p>
+
+  <p>
+    <strong>Poseidon-Merkle commit.</strong> The polynomial commitment scheme
+    needs Merkle trees over Poseidon hashes. Poseidon2-M31 has a tight
+    permutation that fits inside a single warp — 32 threads, one tree
+    layer at a time. The whole commitment for a 2²⁵-coefficient polynomial
+    fits in under 800 ms on H100.
+  </p>
+
+  <h2>What it costs you to build this</h2>
+
+  <p>
+    Honest accounting:
+  </p>
+
+  <ul>
+    <li>The GKR layer in Rust is roughly 8,000 lines, plus another 6,000 for circuit-specific code (attention, layer norm, activations).</li>
+    <li>The CUDA kernels are roughly 20,000 lines.</li>
+    <li>Test coverage is 950+ tests, mostly checking that the prover output round-trips through the verifier and that the Cairo on-chain verifier accepts everything.</li>
+    <li>The Cairo verifier — the contract that actually runs on Starknet — is a separate concern, with its own debug cycle. We'll save that for another talk.</li>
+  </ul>
+
+  <h2>Open problems</h2>
+
+  <p>
+    Three things are still unsolved or under-baked.
+  </p>
+
+  <p>
+    <strong>1. Recursive verification cost.</strong> We recurse proofs to keep
+    them small enough for on-chain verification. The recursive verifier itself
+    is a STARK circuit, and writing one in Cairo that's fast enough and
+    correct is hard. We're at 3.5 s per recursive layer on a single H100,
+    which is acceptable for batch verification but feels like there's another
+    2× left.
+  </p>
+
+  <p>
+    <strong>2. Quantization.</strong> Real production ML runs in INT8 or
+    BF16. Most ZKML work runs in field arithmetic, which means quantizing the
+    model down to fixed-point. The fixed-point itself is fine; the
+    accumulators are where everything subtly goes wrong if you're not
+    careful.
+  </p>
+
+  <p>
+    <strong>3. Trust assumptions.</strong> Verifiable inference is only as
+    good as the binding between the published model weights and the weights
+    the prover used. We hash the weights into the proof, but the hash has to
+    be the canonical one — and "canonical" for a 14B-parameter model is
+    surprisingly negotiable.
+  </p>
+
+  <blockquote>
+    The interesting moment with ZK proving today is not the math.
+    The math is settled. The interesting moment is the engineering
+    that makes the math run in production at 14 billion parameters.
+  </blockquote>
+
+  <p>
+    Slides, demos, and a runnable notebook will be linked from the
+    <a href="https://crates.io/crates/obelyzk">crates.io page</a> once they're
+    cleaned up. Questions welcome at <a href="mailto:victor.amaya@ciroai.us">victor.amaya@ciroai.us</a>.
+  </p>
+
+</article>
+
+<div class="art-footer">
+  <ul class="art-tags">
+    <li>ZK</li><li>STARKs</li><li>GKR Sumcheck</li><li>Circle STARKs</li><li>CUDA</li><li>STWO</li><li>Starknet</li>
+  </ul>
+  <div class="art-share">
+    <span class="art-share-label">Share or cite</span>
+    <span><strong>Victor Amaya.</strong> "A Practitioner's Guide to GKR Sumcheck Over Circle STARKs." zkSummit 14, Rome. May 2026.</span>
+  </div>
+  <a class="art-prev" href="../index.html#articles">← Back to articles</a>
+</div>
+
+<section class="art-related">
+  <span class="art-related-label">Continue reading</span>
+  <div class="art-related-grid">
+    <a class="art-related-card" href="verifying-14b-on-chain.html">
+      <div class="thumb"><img src="../assets/articles/kraken-stwo.jpg" alt="" /></div>
+      <span class="meta">Field notes · April 2026</span>
+      <h4>Verifying a 14-Billion Parameter Neural Network On-Chain</h4>
+    </a>
+    <a class="art-related-card" href="cuda-kernels-m31.html">
+      <div class="thumb"><img src="../assets/articles/cuda-kernels.jpg" alt="" /></div>
+      <span class="meta">Engineering · March 2026</span>
+      <h4>Custom CUDA Kernels for Proving over M31</h4>
+    </a>
+    <a class="art-related-card" href="verifiable-ai-agents-cannes.html">
+      <div class="thumb"><img src="../assets/articles/ethglobal-cannes.jpg" alt="" /></div>
+      <span class="meta">Hackathon · April 2026</span>
+      <h4>Verifiable AI Agents for On-Chain Fund Management</h4>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>

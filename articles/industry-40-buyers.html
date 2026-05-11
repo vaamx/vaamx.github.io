@@ -1,0 +1,238 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>What Industry 4.0 Buyers Actually Ask For — Victor Amaya</title>
+<meta name="description" content="Two weeks at Hi Tech! Stuttgart pitching Ciro AI to German manufacturers. Notes on what the conversations were actually about." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../style.css" />
+<link rel="stylesheet" href="article.css" />
+</head>
+<body class="article-page">
+
+<header class="nav">
+  <div class="nav-shell">
+    <a class="logo" href="../index.html#home">
+      <span class="logo-light">Victor</span><span class="logo-bold">Amaya</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html#home">Home</a>
+      <a href="../index.html#portfolio">Portfolio</a>
+      <a href="../index.html#articles" class="is-active">Articles</a>
+      <a href="../index.html#about">About Me</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<section class="art-hero">
+  <span class="art-kicker">
+    <span class="cat">Field notes · Hi Tech! Stuttgart</span>
+    <span class="dot">·</span>
+    <span>November 2025</span>
+    <span class="dot">·</span>
+    <span>7 min read</span>
+  </span>
+  <h1 class="art-title">What Industry 4.0 Buyers Actually Ask For</h1>
+  <p class="art-deck">
+    Two weeks at Hi Tech! Stuttgart Match Arena pitching Ciro AI to German
+    manufacturers. Almost no one asked about the LLMs. These are the
+    conversations we actually had.
+  </p>
+  <div class="art-byline">
+    <div class="art-byline-avatar"><img src="../assets/profile.png" alt="Victor Amaya" /></div>
+    <div><strong>Victor Amaya</strong> · Founding Engineer & CTO, Ciro AI</div>
+  </div>
+</section>
+
+<div class="art-cover">
+  <div class="art-cover-frame">
+    <img src="../assets/articles/stuttgart.jpg" alt="Factory floor" />
+  </div>
+</div>
+
+<article class="art-body">
+
+  <p>
+    In November we spent two weeks at the Hi Tech! Stuttgart Startup Welcome
+    Package, Batch #9. The setup is roughly: forty early-stage companies
+    spend their days pitching mid-cap and large-cap German manufacturers in
+    one-on-one Match Arena sessions. We did fifty-six of those sessions in
+    fourteen days. Ciro AI is an AI lab for industrial manufacturing, so
+    half the meetings were our home turf.
+  </p>
+
+  <p>
+    I went in expecting questions about the AI. The vision models, the LLM
+    integration, the agent architecture, the proprietary algorithms. We had
+    slides for all of that. Those slides came out maybe three times.
+  </p>
+
+  <p>
+    The other fifty-three times, the conversation was different.
+  </p>
+
+  <h2>The questions we actually got</h2>
+
+  <p>
+    Ranked roughly by frequency, here is what manufacturers actually wanted
+    to know.
+  </p>
+
+  <h3>"Does this work with our SAP?"</h3>
+
+  <p>
+    The single most common question. Not "do you support SAP integration"
+    in some generic sense — they wanted to know about their specific SAP
+    install, which is usually ten to twenty years old, customized beyond
+    recognition by an integrator that has long since left, with a custom
+    IDoc dialect that doesn't quite match any of the ones in the SAP docs.
+  </p>
+
+  <p>
+    What worked: showing a concrete IDoc parser, a concrete connector for
+    one of their specific transactions, and saying "we'll spend two weeks
+    of on-site time mapping yours and the data lives in a Parquet store
+    afterwards." What didn't work: gesturing at "we have an SAP connector"
+    in a slide.
+  </p>
+
+  <h3>"What's the user interface for the line lead?"</h3>
+
+  <p>
+    Manufacturing is run by people who have been doing the same job for
+    decades, often on aged hardware. The line lead doesn't want a fancy
+    React dashboard with motion graphics. They want a screen that looks like
+    the ISA-101 control room screens they're already used to — gray
+    background, big numbers, alerts that beep when something needs
+    attention.
+  </p>
+
+  <p>
+    We built two UIs: one for the office (sales, operations, executive),
+    one for the plant. The plant UI is ISA-101 compliant — same shapes,
+    same colour conventions, same alert hierarchy. That distinction alone
+    closed two of our pilots.
+  </p>
+
+  <h3>"Will this still work on this machine?"</h3>
+
+  <p>
+    Pointing at a Windows machine on the corner of the booth that is, on
+    inspection, a 2013-era Dell with an Intel HD Graphics 4000. Yes, the
+    plant floor still runs on machines like that. Yes, our web UI loads on
+    it. We made sure of that. The dashboards degrade gracefully — they
+    work on a Chrome 90 with WebGL disabled, just without the live charts.
+  </p>
+
+  <div class="art-callout">
+    <strong>Counterintuitive lesson:</strong> the modern dev-tools default
+    of "Chrome latest, WebKit latest, 16 GB RAM" is wildly wrong for
+    industrial buyers. We treat 2018-era Chromebooks as our target
+    minimum spec. It costs us almost nothing and unlocks meetings.
+  </div>
+
+  <h3>"Where does our data live?"</h3>
+
+  <p>
+    The Germans were especially careful here. Data residency, GDPR, the
+    Schrems II ruling, the question of whether US-headquartered SaaS is
+    even a legal option for their data — all real. We deploy in Frankfurt
+    for German customers (AWS eu-central-1), in Madrid for Spanish ones,
+    in São Paulo for Brazilian ones. The data never leaves the region.
+    The control plane (auth, billing, deployment metadata) is separate
+    and lives in eu-west-1.
+  </p>
+
+  <p>
+    Having a one-page architecture diagram that shows exactly where each
+    piece of data lives, who can access it, and what gets logged where
+    closed more deals than any product feature.
+  </p>
+
+  <h3>"What happens if you go out of business?"</h3>
+
+  <p>
+    Source-code escrow is back. Several customers wanted contractual
+    assurance that if Ciro AI shuts down, they can keep running. We've
+    settled on a third-party escrow arrangement (the same one Atlassian
+    used to use) plus a documented "self-hosting" SOP that activates
+    automatically under defined conditions. It cost us a week of legal
+    work and turned a handful of "we'll think about it" responses into
+    signed pilots.
+  </p>
+
+  <h2>What didn't move the needle</h2>
+
+  <p>
+    A list of things I thought would matter and did not.
+  </p>
+
+  <ul>
+    <li><strong>Model benchmarks.</strong> Nobody cared which LLM we use. Nobody asked about MMLU scores. The model is plumbing — what matters is what it can do for their workflow.</li>
+    <li><strong>Investor logos.</strong> StarkWare backing got a polite nod. Nothing more.</li>
+    <li><strong>"AI" branding.</strong> The word "AI" actively triggered scepticism in roughly a third of the conversations. We started calling it "real-time analytics" and "computer-vision-based QC" — same product, twice the engagement.</li>
+    <li><strong>The pitch deck.</strong> By day three we mostly opened the live demo and skipped the deck entirely. The deck was for the prep meeting. The demo was for the buyer.</li>
+  </ul>
+
+  <h2>What did</h2>
+
+  <ul>
+    <li><strong>Concrete case studies.</strong> "Here is one of our customers, here are the metrics they had before and after, here is the line lead I can put you on the phone with this afternoon."</li>
+    <li><strong>Pilot pricing.</strong> Most German manufacturers don't want a pilot they have to budget into capex. A six-week paid pilot, on a fixed price, with a documented success metric and a clear opt-out — that they can buy.</li>
+    <li><strong>Spanish language support.</strong> Several of the German buyers had LATAM operations. Being a Spanish-native bilingual team turned out to be an unexpected differentiator.</li>
+    <li><strong>The plant photo.</strong> A real photo of one of our existing customers' factory floors. Not a stock photo of a glowing data centre. The picture sold the product.</li>
+  </ul>
+
+  <blockquote>
+    The lesson from fifty-six meetings: industrial buyers don't buy
+    technology. They buy a thing that fits inside the operation they
+    already run.
+  </blockquote>
+
+  <p>
+    We came home with three signed pilots, eleven warm leads in active
+    follow-up, and a slide deck that's roughly half the length of the one
+    we arrived with. The other half got cut on the train back from
+    Stuttgart.
+  </p>
+
+</article>
+
+<div class="art-footer">
+  <ul class="art-tags">
+    <li>Industry 4.0</li><li>Sales</li><li>Industrial AI</li><li>Manufacturing</li><li>Field notes</li>
+  </ul>
+  <div class="art-share">
+    <span class="art-share-label">Share or cite</span>
+    <span><strong>Victor Amaya.</strong> "What Industry 4.0 Buyers Actually Ask For." Hi Tech! Stuttgart Match Arena, November 2025.</span>
+  </div>
+  <a class="art-prev" href="../index.html#articles">← Back to articles</a>
+</div>
+
+<section class="art-related">
+  <span class="art-related-label">Continue reading</span>
+  <div class="art-related-grid">
+    <a class="art-related-card" href="verifying-14b-on-chain.html">
+      <div class="thumb"><img src="../assets/articles/kraken-stwo.jpg" alt="" /></div>
+      <span class="meta">Field notes · April 2026</span>
+      <h4>Verifying a 14-Billion Parameter Neural Network On-Chain</h4>
+    </a>
+    <a class="art-related-card" href="verifiable-ai-agents-cannes.html">
+      <div class="thumb"><img src="../assets/articles/ethglobal-cannes.jpg" alt="" /></div>
+      <span class="meta">Hackathon · ETHGlobal Cannes</span>
+      <h4>Verifiable AI Agents for On-Chain Fund Management</h4>
+    </a>
+    <a class="art-related-card" href="gkr-sumcheck-practitioner-guide.html">
+      <div class="thumb"><img src="../assets/articles/zksummit-rome.jpg" alt="" /></div>
+      <span class="meta">Talk · zkSummit 14 · May 2026</span>
+      <h4>A Practitioner's Guide to GKR Sumcheck Over Circle STARKs</h4>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>

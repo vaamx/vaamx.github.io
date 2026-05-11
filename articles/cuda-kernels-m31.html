@@ -1,0 +1,264 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Custom CUDA Kernels for Proving over M31 — Victor Amaya</title>
+<meta name="description" content="Engineering notes on the CUDA work behind Obelyzk: memory-resident traces, warp-coalesced Poseidon Merkle, and a sumcheck round kernel at 92% HBM bandwidth." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../style.css" />
+<link rel="stylesheet" href="article.css" />
+</head>
+<body class="article-page">
+
+<header class="nav">
+  <div class="nav-shell">
+    <a class="logo" href="../index.html#home">
+      <span class="logo-light">Victor</span><span class="logo-bold">Amaya</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html#home">Home</a>
+      <a href="../index.html#portfolio">Portfolio</a>
+      <a href="../index.html#articles" class="is-active">Articles</a>
+      <a href="../index.html#about">About Me</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<section class="art-hero">
+  <span class="art-kicker">
+    <span class="cat">Engineering</span>
+    <span class="dot">·</span>
+    <span>March 2026</span>
+    <span class="dot">·</span>
+    <span>8 min read</span>
+  </span>
+  <h1 class="art-title">Custom CUDA Kernels for Proving over M31</h1>
+  <p class="art-deck">
+    The Mersenne-31 field reduces modulo <code>2³¹ − 1</code>. That means
+    every field multiplication fits in a single 64-bit register — no carries,
+    no Montgomery dance. Here's what we did with that on H100s.
+  </p>
+  <div class="art-byline">
+    <div class="art-byline-avatar"><img src="../assets/profile.png" alt="Victor Amaya" /></div>
+    <div><strong>Victor Amaya</strong> · Founding Engineer, BitSage Network</div>
+  </div>
+</section>
+
+<div class="art-cover">
+  <div class="art-cover-frame">
+    <img src="../assets/articles/cuda-kernels.jpg" alt="CUDA kernel architecture" />
+  </div>
+</div>
+
+<article class="art-body">
+
+  <p>
+    Most ZK proving stacks pay a tax on every field operation: a
+    BN254-friendly field needs Montgomery reduction, which is a multiplication
+    and a couple of subtractions per "multiply." On a GPU, those extra
+    operations break instruction-level parallelism and balloon register
+    pressure.
+  </p>
+
+  <p>
+    M31 — Mersenne-31, <code>p = 2³¹ − 1</code> — gives you a different deal.
+    The reduction modulo <code>2³¹ − 1</code> is just <code>x = (x & p) + (x >> 31)</code>,
+    branch-free, one cycle. A multiplication of two M31 elements fits inside a
+    64-bit register, and the reduction is essentially free. We measured 14×
+    higher field-multiplication throughput on H100 than for a comparable
+    BN254 kernel. That's the deal that makes 14B-parameter on-chain
+    verification tractable.
+  </p>
+
+  <h2>Memory-resident traces</h2>
+
+  <p>
+    A 14B-parameter forward pass dispatches roughly 2¹² distinct GKR sumcheck
+    instances. Each sumcheck instance holds a multilinear extension of size up
+    to 2²⁵ field elements — 128 MB at four bytes each. That's not a number
+    you want to bounce between host RAM and HBM more than once.
+  </p>
+
+  <p>
+    We allocate the trace polynomial once in HBM, keep it pinned, and have
+    every kernel mutate it in place. The MLE-restriction kernel, the sumcheck
+    round kernel, the Poseidon-Merkle commitment kernel — they all read from
+    the same buffer, write to the same buffer, never round-trip to host. On
+    H100, that's a sustained <strong>~3.0 TB/s effective bandwidth</strong>
+    against a theoretical 3.35 TB/s, or about <strong>92%</strong>.
+  </p>
+
+  <pre><code>// trace lives in HBM, kernels mutate in-place
+__device__ M31 trace[1 &lt;&lt; 25];
+
+// MLE restriction at r ∈ M31 — fold across hypercube
+__global__ void restrict_mle(M31* poly, M31 r, uint32_t n) {
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    if (tid &gt;= n / 2) return;
+    M31 lo = poly[2 * tid];
+    M31 hi = poly[2 * tid + 1];
+    // (1 - r) * lo + r * hi   in M31
+    poly[tid] = m31_add(m31_mul(m31_sub(M31_ONE, r), lo),
+                        m31_mul(r, hi));
+}</code></pre>
+
+  <h2>Warp-coalesced Poseidon-Merkle</h2>
+
+  <p>
+    Poseidon2-M31 has a state width of 16 field elements and an external
+    round structure that maps very naturally onto a CUDA warp. Each warp
+    handles one Merkle layer at a time; 32 threads handle 32 distinct
+    Poseidon permutations in parallel, with shared-memory shuffles for the
+    MDS matrix mixing.
+  </p>
+
+  <p>
+    The naïve version stalls on memory: each Merkle node reads from random
+    locations in the previous layer. The trick is to layout the tree in
+    Morton order (Z-order), so neighbouring leaves end up in neighbouring
+    cache lines. After that the kernel is bottlenecked on the Poseidon
+    permutation itself rather than memory.
+  </p>
+
+  <p>
+    A 2²⁵-leaf Merkle tree commits in <strong>780 ms</strong> on a single
+    H100. The previous best we benchmarked (a public Goldilocks-field
+    implementation) sat at 4.1 s. The M31 advantage compounds: smaller field,
+    cheaper permutation, smaller commitments.
+  </p>
+
+  <h2>Sumcheck round kernel</h2>
+
+  <p>
+    Each sumcheck round computes three values: <code>g(0)</code>,
+    <code>g(1)</code>, and the leading coefficient of <code>g(X)</code>. The
+    naïve implementation is three separate reduction kernels — three launches,
+    three memory passes. We fuse them.
+  </p>
+
+  <pre><code>__global__ void sumcheck_round(
+    const M31* __restrict__ poly,  // input MLE
+    uint32_t  n,                   // current size
+    M31*      g0_out,              // accumulator for g(0)
+    M31*      g1_out,              // accumulator for g(1)
+    M31*      gd_out               // accumulator for leading coeff
+) {
+    __shared__ M31 s_g0[32];
+    __shared__ M31 s_g1[32];
+    __shared__ M31 s_gd[32];
+
+    uint32_t tid = blockIdx.x * blockDim.x + threadIdx.x;
+    M31 g0 = M31_ZERO, g1 = M31_ZERO, gd = M31_ZERO;
+
+    for (uint32_t i = tid; i &lt; n / 2; i += blockDim.x * gridDim.x) {
+        M31 lo = poly[2 * i];
+        M31 hi = poly[2 * i + 1];
+        g0 = m31_add(g0, lo);
+        g1 = m31_add(g1, hi);
+        gd = m31_add(gd, m31_sub(hi, lo));
+    }
+
+    // warp reduce
+    g0 = warp_reduce(g0);
+    g1 = warp_reduce(g1);
+    gd = warp_reduce(gd);
+
+    if ((threadIdx.x &amp; 31) == 0) {
+        atomicAdd_m31(g0_out, g0);
+        atomicAdd_m31(g1_out, g1);
+        atomicAdd_m31(gd_out, gd);
+    }
+}</code></pre>
+
+  <p>
+    Single kernel launch, single memory pass, three accumulators carried in
+    registers, warp-level reductions and atomic adds for the cross-block
+    combine. For a 2²⁵-coefficient round this completes in 14 ms on H100.
+    The full sumcheck protocol (25 rounds) finishes in just under 600 ms.
+  </p>
+
+  <h2>What didn't work</h2>
+
+  <p>
+    Two things we tried and abandoned.
+  </p>
+
+  <p>
+    <strong>Tensor cores for matrix-mul circuits.</strong> Tempting, because
+    Hopper's tensor cores are absurdly fast at low-precision FMA. But the
+    field arithmetic doesn't map onto BF16 or FP16 without a precision loss,
+    and an emulation layer eats all the speedup. We ended up using tensor
+    cores only for the un-quantized matmul, not for the prover.
+  </p>
+
+  <p>
+    <strong>Persistent kernels.</strong> The idea was to launch one big kernel
+    that internally hops between sumcheck rounds, avoiding launch overhead.
+    In practice the per-round register pressure was different enough that the
+    persistent kernel's occupancy collapsed. We went back to a launch per
+    round; on Hopper, kernel launch is roughly 8 μs, which is unmeasurable
+    compared to round work.
+  </p>
+
+  <h2>Open work</h2>
+
+  <p>
+    Things we still want to fix.
+  </p>
+
+  <ul>
+    <li><strong>Multi-GPU prover.</strong> Right now everything runs on a single H100. Sharding a sumcheck across GPUs is straightforward in principle; in practice the all-reduce after each round is annoying. We have a prototype on 8× H100s but the gain is closer to 4× than 8×.</li>
+    <li><strong>FRI prover.</strong> FRI folding currently runs on CPU because the existing CUDA implementation we forked is buggy on Hopper. Rewriting from scratch is on the roadmap.</li>
+    <li><strong>Precompiled kernels.</strong> Today everything is compiled at runtime per session. A precompiled kernel cache would shave 8 s off cold-start.</li>
+  </ul>
+
+  <blockquote>
+    The unlock isn't a clever algorithm. The unlock is a field that doesn't
+    fight the hardware. Pick the right field, and the GPU does the rest.
+  </blockquote>
+
+  <p>
+    Source at <a href="https://crates.io/crates/obelyzk">crates.io/crates/obelyzk</a>.
+    Benchmarks and a runnable notebook in <code>obelyzk/bench</code>.
+  </p>
+
+</article>
+
+<div class="art-footer">
+  <ul class="art-tags">
+    <li>CUDA</li><li>GPU</li><li>M31</li><li>STARKs</li><li>Performance</li><li>HBM</li>
+  </ul>
+  <div class="art-share">
+    <span class="art-share-label">Share or cite</span>
+    <span><strong>Victor Amaya.</strong> "Custom CUDA Kernels for Proving over M31." March 2026.</span>
+  </div>
+  <a class="art-prev" href="../index.html#articles">← Back to articles</a>
+</div>
+
+<section class="art-related">
+  <span class="art-related-label">Continue reading</span>
+  <div class="art-related-grid">
+    <a class="art-related-card" href="gkr-sumcheck-practitioner-guide.html">
+      <div class="thumb"><img src="../assets/articles/zksummit-rome.jpg" alt="" /></div>
+      <span class="meta">Talk · zkSummit 14 · May 2026</span>
+      <h4>A Practitioner's Guide to GKR Sumcheck Over Circle STARKs</h4>
+    </a>
+    <a class="art-related-card" href="verifying-14b-on-chain.html">
+      <div class="thumb"><img src="../assets/articles/kraken-stwo.jpg" alt="" /></div>
+      <span class="meta">Field notes · April 2026</span>
+      <h4>Verifying a 14-Billion Parameter Neural Network On-Chain</h4>
+    </a>
+    <a class="art-related-card" href="industry-40-buyers.html">
+      <div class="thumb"><img src="../assets/articles/stuttgart.jpg" alt="" /></div>
+      <span class="meta">Field notes · November 2025</span>
+      <h4>What Industry 4.0 Buyers Actually Ask For</h4>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>

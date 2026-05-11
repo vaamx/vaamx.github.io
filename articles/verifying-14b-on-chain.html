@@ -1,0 +1,269 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1" />
+<title>Verifying a 14-Billion Parameter Neural Network On-Chain — Victor Amaya</title>
+<meta name="description" content="Field notes on proving Qwen2.5-14B on Starknet Sepolia: chunked weight binding, recursive aggregation, and a Cairo verifier that fits on L2." />
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Lora:ital,wght@0,400;0,500;1,400;1,500&display=swap" rel="stylesheet" />
+<link rel="stylesheet" href="../style.css" />
+<link rel="stylesheet" href="article.css" />
+</head>
+<body class="article-page">
+
+<header class="nav">
+  <div class="nav-shell">
+    <a class="logo" href="../index.html#home" aria-label="Victor Amaya">
+      <span class="logo-light">Victor</span><span class="logo-bold">Amaya</span>
+    </a>
+    <nav class="nav-links">
+      <a href="../index.html#home">Home</a>
+      <a href="../index.html#portfolio">Portfolio</a>
+      <a href="../index.html#articles" class="is-active">Articles</a>
+      <a href="../index.html#about">About Me</a>
+      <a href="../index.html#contact">Contact</a>
+    </nav>
+  </div>
+</header>
+
+<section class="art-hero">
+  <span class="art-kicker">
+    <span class="cat">Field notes</span>
+    <span class="dot">·</span>
+    <span>April 2026</span>
+    <span class="dot">·</span>
+    <span>9 min read</span>
+  </span>
+  <h1 class="art-title">Verifying a 14-Billion Parameter Neural Network On-Chain</h1>
+  <p class="art-deck">
+    Qwen2.5-14B has 281 transformer layers and roughly fourteen billion
+    learned weights. We proved a full forward pass on Starknet Sepolia using
+    Obelyzk. This is the post-mortem.
+  </p>
+  <div class="art-byline">
+    <div class="art-byline-avatar"><img src="../assets/profile.png" alt="Victor Amaya" /></div>
+    <div><strong>Victor Amaya</strong> · Founding Engineer, BitSage Network</div>
+  </div>
+</section>
+
+<div class="art-cover">
+  <div class="art-cover-frame">
+    <img src="../assets/articles/kraken-stwo.jpg" alt="On-chain verification dashboard" />
+  </div>
+</div>
+
+<article class="art-body">
+
+  <p>
+    On April 17th 2026, transaction
+    <code>0x5ce1b41815e29a7b3dd03b77187cf32c8c5f0e2607960303174cbea303edfd3</code>
+    on Starknet Sepolia accepted a proof that <strong>Qwen2.5-14B</strong>
+    had run a specific forward pass to completion. It was the first time
+    an open-weights model of that scale had been verified on-chain.
+  </p>
+
+  <p>
+    The number that matters: <strong>14 billion parameters across 281
+    transformer layers</strong>. We followed it a week later with GLM-4-9B
+    (<code>0x542960d703a62d4beaacf0d9094ea92dc86bf326cd917c533039f4dd1eb4a30</code>).
+    Neither was a benchmark stunt — they were the first two real-model proofs
+    written into the Obelyzk regression suite.
+  </p>
+
+  <h2>Why on-chain matters here</h2>
+
+  <p>
+    A proof on a hard drive is a curiosity. A proof on a public blockchain is
+    a credible commitment: anyone can independently re-verify it, the
+    settlement is irreversible, and the system has no privileged operator who
+    can later say "actually that proof was wrong, sorry."
+  </p>
+
+  <p>
+    The argument for verifiable inference is the same argument we made for
+    verifiable computing more broadly a decade ago. If you're going to act
+    on an LLM's output — sign a transaction, gate access to a vault, settle
+    a treasury position — you want a cryptographic receipt that the model
+    actually said what someone is claiming it said. We built Obelyzk because
+    we wanted those receipts.
+  </p>
+
+  <h2>The numbers we had to fit</h2>
+
+  <p>
+    Starknet's transaction calldata budget is finite. Cairo step counts are
+    finite. The bare structure of Qwen2.5-14B is:
+  </p>
+
+  <ul>
+    <li><strong>14.4 billion parameters</strong> spread across attention, MLP, and embedding matrices.</li>
+    <li><strong>281 transformer layers</strong> (GroupedQueryAttention, RMSNorm, SiLU MLP).</li>
+    <li><strong>5,120-dimensional hidden state</strong>, head dim 128, sequence length variable.</li>
+    <li>A vocab of 152,064 tokens for embedding + LM head.</li>
+  </ul>
+
+  <p>
+    Naively, the proof for one forward pass would be hundreds of megabytes.
+    Calldata budget is closer to a few thousand felts. We needed compression.
+  </p>
+
+  <h2>Chunked weight binding</h2>
+
+  <p>
+    The trick is to never put the weights on-chain. Instead, we commit to the
+    weights once (a Poseidon Merkle root over the canonical weight order) and
+    bind every subsequent proof to that root. The prover proves <em>this
+    forward pass used the weights committed to in root <code>0xabc...</code></em>,
+    not <em>here are 14B weights and a forward pass</em>.
+  </p>
+
+  <p>
+    To do that without materializing all 14B weights into a single MLE, we
+    split the weights into ~4,096-element chunks, hash each chunk into the
+    Merkle tree, and prove inclusion of just the chunks that participated in
+    a given matmul. For Qwen2.5-14B, that's roughly 3.4 million chunks. The
+    Merkle root is 32 bytes.
+  </p>
+
+  <div class="art-callout">
+    <strong>Why this works.</strong> The model is public. Anyone can recompute
+    the Merkle root from the weights themselves and check it matches the one
+    the contract was deployed with. The prover then only needs to convince
+    the verifier that they used <em>those</em> weights — not any weights.
+  </div>
+
+  <h2>Recursive STARK aggregation</h2>
+
+  <p>
+    Even with chunked weights, a 281-layer forward pass produces a proof that
+    won't fit in a single L2 transaction. So we recurse.
+  </p>
+
+  <p>
+    Each layer produces a sub-proof. Sub-proofs are aggregated in pairs by a
+    <em>recursive verifier</em> — itself a STARK circuit that verifies two
+    STARKs and emits a single STARK. After <code>log₂(281) ≈ 9</code> levels
+    of aggregation, you have one proof that attests to the entire pass.
+  </p>
+
+  <p>
+    The recursive verifier was the hardest single component. We're now at
+    160-bit security with a 48-column trace and two-level recursion. The
+    final proof verifies on Starknet Sepolia in <strong>942 felts of
+    calldata</strong>, a 49× compression over the unaggregated stream.
+  </p>
+
+  <h2>The Cairo verifier on L2</h2>
+
+  <p>
+    The contract on Starknet — class hash
+    <code>0x0300ff964fe615d094af601074b76b7193b564e0c7215c7b98bc046334c35bcf</code> —
+    re-executes the full STARK verifier from inside Cairo. Every polynomial
+    evaluation, every Merkle path, every FRI fold, the proof-of-work nonce.
+    This is not record-based: a malicious prover that submits a wrong proof
+    is rejected by the contract itself, not by an off-chain watcher.
+  </p>
+
+  <p>
+    The contract is small. The Cairo verifier compiles to roughly 24 KB of
+    bytecode plus a 942-felt calldata budget per verification. Two transactions
+    can verify two independent inferences side by side. The cost on Sepolia
+    is approximately <code>0.001 STRK</code> per verification, which is small
+    enough that we're already using it as a regression check in CI.
+  </p>
+
+  <h2>What we'd do differently</h2>
+
+  <p>
+    Three things in hindsight.
+  </p>
+
+  <p>
+    <strong>1. Start with the recursive verifier, not the leaf prover.</strong>
+    We spent four months making leaf proofs fast, then discovered the
+    recursive verifier was the bottleneck. The right order is: design the
+    recursive verifier first, then design the leaf prover to produce shapes
+    the recursive verifier likes.
+  </p>
+
+  <p>
+    <strong>2. Streaming, not batch.</strong> Our first version generated all
+    281 layer proofs, then aggregated them. The right approach is to
+    stream-aggregate as proofs come out — the recursion tree gets to consume
+    proofs incrementally, so peak memory stays bounded and we don't have to
+    serialize gigabytes of intermediate proofs to disk.
+  </p>
+
+  <p>
+    <strong>3. The model loader is critical.</strong> Half of the bugs we
+    shipped came from the model-loading layer not the proving layer. Different
+    head dimensions, different LayerNorm vs RMSNorm conventions, weights
+    transposed for the wrong matmul. We've now invested in a strict
+    HuggingFace-to-Obelyzk import path that explicitly tags every weight with
+    its role in the forward pass.
+  </p>
+
+  <h2>What this enables</h2>
+
+  <p>
+    The unlock here isn't that we can now spend the gas to verify a chat
+    response. It's that we can build systems where a smart contract conditions
+    its own behavior on the output of an LLM, and the contract enforces that
+    the LLM ran correctly. Treasury vaults gated by AI agents. Predictions
+    markets that resolve on verifiable LLM outputs. Game logic that integrates
+    real model inference without trusting an oracle.
+  </p>
+
+  <p>
+    The path from here is the dull engineering one: more models supported,
+    faster proving, cheaper verification. None of it is conceptually novel
+    after Qwen2.5-14B. All of it is the work of the next year.
+  </p>
+
+  <blockquote>
+    Verifiable AI is no longer a bet on a paper. It's a build-out.
+  </blockquote>
+
+  <p>
+    Source, regression suite, and the Sepolia transaction trail at
+    <a href="https://crates.io/crates/obelyzk">crates.io/crates/obelyzk</a>.
+  </p>
+
+</article>
+
+<div class="art-footer">
+  <ul class="art-tags">
+    <li>ZK</li><li>STARKs</li><li>Starknet</li><li>Cairo</li><li>Qwen</li><li>Verifiable Inference</li>
+  </ul>
+  <div class="art-share">
+    <span class="art-share-label">Share or cite</span>
+    <span><strong>Victor Amaya.</strong> "Verifying a 14-Billion Parameter Neural Network On-Chain." April 2026.</span>
+  </div>
+  <a class="art-prev" href="../index.html#articles">← Back to articles</a>
+</div>
+
+<section class="art-related">
+  <span class="art-related-label">Continue reading</span>
+  <div class="art-related-grid">
+    <a class="art-related-card" href="gkr-sumcheck-practitioner-guide.html">
+      <div class="thumb"><img src="../assets/articles/zksummit-rome.jpg" alt="" /></div>
+      <span class="meta">Talk · zkSummit 14 · May 2026</span>
+      <h4>A Practitioner's Guide to GKR Sumcheck Over Circle STARKs</h4>
+    </a>
+    <a class="art-related-card" href="cuda-kernels-m31.html">
+      <div class="thumb"><img src="../assets/articles/cuda-kernels.jpg" alt="" /></div>
+      <span class="meta">Engineering · March 2026</span>
+      <h4>Custom CUDA Kernels for Proving over M31</h4>
+    </a>
+    <a class="art-related-card" href="verifiable-ai-agents-cannes.html">
+      <div class="thumb"><img src="../assets/articles/ethglobal-cannes.jpg" alt="" /></div>
+      <span class="meta">Hackathon · ETHGlobal Cannes</span>
+      <h4>Verifiable AI Agents for On-Chain Fund Management</h4>
+    </a>
+  </div>
+</section>
+
+</body>
+</html>
