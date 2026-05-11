@@ -205,39 +205,63 @@ const PROJECTS = {
   },
 
   'simbotic': {
-    title: "Simbotic Engine",
+    title: "Simbotic",
     year: 2019,
-    role: "Open Source Contributor",
+    role: "Co-creator · Vertex Studio",
     image: "assets/projects/simbotic.jpg",
-    summary: "Custom simulation engine for synthetic data and robotics R&D. (TODO — fill in your specific role and contributions.)",
+    summary: "Advanced AI simulation platform bridging virtual and physical worlds — Epic MegaGrant recipient.",
     body: [
-      "TODO — fill in: which era of Simbotic you contributed to (the open-source robotics platform, the digital-twin work, the synthetic-data pipelines), what you specifically owned, which models or environments you shipped, and whether it was the public github.com/simbotic project or in-house work. Notes from this section will be promoted to the front of the card."
+      "Simbotic is the simulation and synthetic-data platform we built at Vertex Studio for AI agents that need to learn about the physical world before they ever touch it. The pitch: large language models are excellent with text, terrible with three dimensions. Simbotic gives them a place to develop spatial reasoning, manipulation, and environmental understanding.",
+      "Multi-agent training environments. Unlimited synthetic data via domain randomization. Diffusion-model and NeRF-based 3D scene generation. A human-in-the-loop layer that lets domain experts guide AI learning instead of just labelling. Real-time training pipelines compress what used to be weeks of supervised data collection into hours.",
+      "Stack: <strong>Unreal Engine 5</strong> for the visual layer, <strong>NVIDIA</strong> for GPU acceleration, <strong>PyTorch</strong> for the learning side, <strong>GStreamer</strong> for the streaming pipeline, <strong>Rust</strong> for the performance-critical core, <strong>Kubernetes</strong> for orchestration. Third-party integrations with ROS 2 (URDF / RViz), Open Sound Control, and PX4 for flight-controller SIL/HIL — defense, robotics, and entertainment customers come at it from very different angles.",
+      "Awarded an Epic MegaGrant for the Unreal plugin and documentation work. Continues to ship out of Vertex Studio."
     ],
-    tags: ["TBD"]
+    metrics: [
+      { value: "Epic", label: "MegaGrant recipient" },
+      { value: "UE5", label: "Visual layer" },
+      { value: "Multi-agent", label: "Training environments" }
+    ],
+    tags: ["Unreal Engine 5", "PyTorch", "Rust", "NVIDIA", "NeRFs", "Diffusion Models", "GStreamer", "Kubernetes", "ROS 2", "PX4"],
+    links: [
+      { href: "https://simbotic.ai", label: "simbotic.ai ↗", primary: true },
+      { href: "https://x.com/studio_vertex", label: "Vertex Studio" }
+    ]
   },
 
   'sortium': {
-    title: "Sortium — Simulations",
-    year: 2018,
-    role: "Simulation Engineer",
+    title: "Sortium",
+    year: 2021,
+    role: "Engineering Lead · Vertex Studio",
     image: "assets/projects/sortium.jpg",
-    summary: "Real-time 3D simulations and world-building. (TODO — fill in scope.)",
+    summary: "Your AI-powered production team — just a prompt away. Generative 3D asset pipeline for game studios and creative teams.",
     body: [
-      "TODO — write the real story: your role at Sortium, what simulations or 3D worlds you built, the tech stack (Unreal? Unity? custom engine?), shipped products and customers, key technical wins. A few sentences is enough to start; we can expand."
+      "Sortium is the productize-the-team idea applied to 3D content. A creative director describes what they need — a character, a prop, a full scene — and the platform orchestrates a team of specialized AI agents (modelling, texturing, rigging, lighting, scene composition) to deliver the asset, game-ready, in minutes instead of weeks.",
+      "Built on the same Unreal Engine + PyTorch foundation as Simbotic, with a heavier emphasis on multi-agent orchestration and a producer-facing UI that hides the underlying complexity. Each agent in the production chain has its own model, its own constraints, and its own handoff contract with the next one downstream.",
+      "Designed for game studios, ad agencies, and any creative team where the bottleneck isn't ideas — it's the asset pipeline catching up to them."
     ],
-    tags: ["TBD"]
+    metrics: [
+      { value: "Prompt → asset", label: "Production loop" },
+      { value: "Multi-agent", label: "Orchestration" }
+    ],
+    tags: ["Unreal Engine", "PyTorch", "Multi-agent AI", "Generative 3D", "Diffusion Models", "Python"]
   },
 
   'cosmogene': {
-    title: "Cosmogene — 3D Worlds",
-    year: 2017,
-    role: "3D Engineer",
+    title: "Cosmogene",
+    year: 2022,
+    role: "Engineering Lead · Vertex Studio",
     image: "assets/projects/cosmogene.jpg",
-    summary: "Procedural 3D-world generation platform. (TODO — fill in scope.)",
+    summary: "Create your personal AI pet — a companion that lives, learns, and evolves in a procedurally-generated 3D universe.",
     body: [
-      "TODO — fill in: what Cosmogene was as a product, the worlds and applications built on it, your engineering ownership, and which 3D / rendering technologies powered it. Public-facing links or video would be great here."
+      "Cosmogene is the consumer-facing application of the agent-and-simulation technology that grew out of Simbotic and Sortium. Each user adopts an AI pet whose appearance, behaviour, and habitat are procedurally generated; the pet learns from interactions, develops a personality over time, and lives inside a 3D universe rendered in Unreal.",
+      "Two bets stacked on each other. <strong>Technical:</strong> simulation-grade environments and agent training are now cheap enough to run for individual consumer applications, not just enterprise robotics R&amp;D. <strong>Product:</strong> people want a relationship with an AI that has a body in a world, not just a face on a screen.",
+      "Internally, Cosmogene shares a great deal of code with Simbotic — the agents are the same agents, the world simulation uses the same kernels. The product layer on top is what makes it a pet instead of a research environment."
     ],
-    tags: ["TBD"]
+    metrics: [
+      { value: "Procedural", label: "Worlds & companions" },
+      { value: "Unreal", label: "Rendering" }
+    ],
+    tags: ["Unreal Engine", "PyTorch", "AI Agents", "Generative 3D", "Diffusion Models", "Consumer AI"]
   },
 
   'vertex': {
@@ -260,30 +284,37 @@ const PROJECTS = {
 
   'virse-meta': {
     title: "VirseHQ × Meta",
-    year: 2015,
-    role: "Product Engineer",
+    year: 2016,
+    role: "Product Engineer · VirseHQ",
     image: "assets/projects/virse-meta.jpg",
-    summary: "3D worlds & XR apps in collaboration with Meta. (TODO — fill in scope.)",
+    summary: "Enterprise 3D retail experiences shipped to Meta Quest and Rift — the XR slice of VirseHQ's metaverse work.",
     body: [
-      "TODO — fill in: the nature of the Meta collaboration (which products, which Meta platform — Oculus / Quest / Workrooms), your engineering ownership, hero outcomes, and any public links or names. This is one of the most differentiating items on the page and worth two or three paragraphs."
+      "The slice of VirseHQ that ran on Meta hardware. Native XR clients for Quest and Rift, integrations into Meta's enterprise tooling, and the engineering glue that let our 3D retail universes show up inside the headsets enterprise customers were already buying.",
+      "The interesting work was less about flashy rendering and more about XR-grade reliability: full-body networking under packet loss, hand-tracking input that doesn't drop frames, spatial audio that survives a thirty-person room. Enterprise demos fail loudly when the framerate dips — the whole experience falls apart in ways a 2D dashboard never does."
     ],
-    tags: ["Unity", "Unreal", "XR", "Meta"]
+    metrics: [
+      { value: "Quest · Rift", label: "Target headsets" },
+      { value: "OpenXR", label: "Cross-platform" }
+    ],
+    tags: ["Meta Quest", "Oculus Rift", "Unreal Engine", "Unity", "OpenXR", "WebGL", "Real-time multiplayer"]
   },
 
   'virse': {
-    title: "VirseHQ — AI Metaverse",
+    title: "VirseHQ — 3D Retail Metaverse",
     year: 2015,
     role: "Product Engineer & Regional Director",
     image: "assets/projects/virse.jpg",
-    summary: "AI-powered metaverse and enterprise XR products operating at $15M ARR.",
+    summary: "AI-powered 3D retail universe where enterprise brands meet their customers in immersive shoppable spaces. $15M ARR.",
     body: [
-      "Full-stack work on AI-powered metaverse and enterprise XR products. React + Node.js for the web stack, Unity and Unreal for the 3D runtimes, WebGL clients for browser-based XR, and real-time multiplayer networking with strict synchronization guarantees for enterprise demos.",
-      "Built 3D content pipelines, real-time rendering tooling, and Meta-platform integrations for enterprise XR deployments. The business reached $15M ARR while I was there."
+      "VirseHQ was the immersive 3D retail metaverse: an AI-powered platform that let enterprise brands launch their own branded universes — shoppable spaces, interactive product experiences, multiplayer customer events, and the production tooling to ship all of it without standing up a game studio.",
+      "Stack spanned full-stack: <strong>React + Node.js</strong> for the management console, <strong>Unity</strong> and <strong>Unreal</strong> for the 3D runtimes, <strong>WebGL</strong> clients for browser-based access, and a real-time multiplayer networking layer with strict synchronization guarantees for enterprise demos. The business reached <strong>$15M ARR</strong> during my tenure.",
+      "Beyond engineering, I led the regional expansion into Latin America — the enterprise sales motion, the customer onboarding, and the localization work that comes with delivering immersive products in markets with very different connectivity and infrastructure."
     ],
     metrics: [
-      { value: "$15M", label: "ARR" }
+      { value: "$15M", label: "ARR" },
+      { value: "LATAM", label: "Regional lead" }
     ],
-    tags: ["React", "Node.js", "Unity", "Unreal", "WebGL", "XR", "Real-time"]
+    tags: ["React", "Node.js", "Unity", "Unreal", "WebGL", "Three.js", "Real-time multiplayer", "Metaverse"]
   },
 
   'kraken': {
@@ -304,20 +335,25 @@ const PROJECTS = {
   },
 
   'kadevjo': {
-    title: "Kadevjo Games",
+    title: "Novatech / Kadevjo",
     year: 2014,
     role: "Co-founder & Chief Innovation Officer",
     image: "assets/projects/kadevjo.jpg",
-    summary: "Mobile titles, apps, and early crypto integrations. Reached $1M ARR, exited.",
+    summary: "Salvadoran mobile-game studio. Shipped Guanapolio — the country's Monopoly — and a portfolio of mobile titles. Reached $1M ARR, exited.",
     body: [
-      "Co-founded a game development studio in San Salvador at twenty. Shipped multiple mobile titles built in Unity / C#, a portfolio of supporting apps, and some of the earliest crypto-integration experiments coming out of LATAM. Grew the studio to $1M ARR and exited.",
-      "TODO — list specific titles, screenshots, and any still-live public links. This is great early-career material that deserves a proper showcase."
+      "Co-founded a game development studio in San Salvador at twenty. The flagship was <strong>Guanapolio</strong> — a Salvadoran take on Monopoly with locations and landmarks from across the country, and game pieces featuring El Cipitío, La Tenchis, Jorge ‘Mágico’ González, and Frank Velásquez. The mobile adaptation launched on iOS and Android on March 19, 2014, and earned national and international recognition for cultural localization done right.",
+      "The studio shipped a broader portfolio of mobile titles and Salvadoran-market apps in <strong>Unity / C#</strong>, with some of the earliest crypto-integration experiments coming out of the region. Grew to <strong>$1M ARR</strong> and exited.",
+      "Looking back, the studio was less a game company than a venture studio in disguise — we built what the market wanted, learned to ship product fast, and used the proceeds to fund the next thing. The operational discipline learned shipping mobile titles into LATAM is the foundation every later company sat on."
     ],
     metrics: [
       { value: "$1M", label: "ARR" },
-      { value: "Exited", label: "Outcome" }
+      { value: "Exited", label: "Outcome" },
+      { value: "iOS · Android", label: "Platforms" }
     ],
-    tags: ["Unity", "C#", "Mobile", "Crypto"]
+    tags: ["Unity", "C#", "iOS", "Android", "Mobile Games", "LATAM"],
+    links: [
+      { href: "https://historico.elsalvador.com/historico/123748/guanapolio-presenta-su-app-para-movil.html", label: "Guanapolio launch coverage ↗", primary: true }
+    ]
   },
 
   'findex': {

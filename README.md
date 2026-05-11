@@ -45,20 +45,6 @@ xelatex cv.tex
 cp cv.pdf site/assets/cv.pdf
 ```
 
-## TODO
-
-Five portfolio tiles are marked as placeholders pending content
-from Victor:
-
-- Simbotic Engine
-- Sortium — Simulations
-- Cosmogene — 3D Worlds
-- VirseHQ × Meta
-- Kadevjo Games
-
-Each shows a `TODO` badge in the UI and a "fill this in" prompt in
-its modal.
-
 ## License
 
 Content © Victor Amaya. Code is provided as-is for portfolio purposes.
